@@ -1,4 +1,4 @@
-# Meine tägliche Skriptsammlung
+# Rubens Skriptsammlung
 
 Dieses Repository enthält eine Sammlung von Python-Skripten, die ich für verschiedene tägliche Aufgaben und Automatisierungen verwende. Jedes Skript ist für einen spezifischen Zweck konzipiert und kann unabhängig voneinander ausgeführt werden.
 
