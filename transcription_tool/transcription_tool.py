@@ -4,7 +4,7 @@ import os
 import csv
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.1:latest"
+OLLAMA_MODEL = "qwen3:14b"
 
 
 def transcribe_file_faster_whisper(model, file_path):
@@ -34,11 +34,25 @@ def transcribe_file_whisper(model, file_path):
     return result["text"], result["segments"], result
 
 
-def summarize(text):
+def transcribe_file_mlx_whisper(file_path, model_name):
+    print(f"[mlx-whisper] Transcribing file: {file_path}")
+    import mlx_whisper
+
+    result = mlx_whisper.transcribe(file_path, path_or_hf_repo=model_name)
+
+    print("\nTranscript:")
+    print("-----------")
+    for segment in result["segments"]:
+        print(f"[{segment['start']:.2f}s -> {segment['end']:.2f}s] {segment['text']}")
+
+    return result["text"], result["segments"], result
+
+
+def summarize(text, prompt=None):
     headers = {"Content-Type": "application/json"}
     data = {
         "model": OLLAMA_MODEL,
-        "prompt": f'Fasse alle Informationen aus folgendem Text kurz und strukturiert zusammen: \n"""\n{text}\n"""\n\nAchte darauf, dass alle wichtigen Informationen enthalten sind. Wenn Aufforderungen oder Fragen enthalten sind, hebe diese explizit hervor. Füge dann am Ende eine kurze Bewertung/Analyse des Inhalts hinzu.',
+        "prompt": f'Fasse das vorliegende Transkript kurz und strukturiert zusammen: \n"""\n{text}\n"""\n\nValidiere vollständigkeit. Wenn Aufforderungen oder Fragen enthalten sind, hebe diese explizit hervor. Füge eine kurze Bewertung/Analyse des Inhalts an.\n\nNutzerprompt: {prompt}',
         "stream": False
     }
     try:
@@ -97,13 +111,14 @@ def save_to_markdown(segments, full_text, summary, output_file, backend='whisper
 def main():
     parser = argparse.ArgumentParser(description="Transcribe a file using Whisper")
     parser.add_argument("file_path", help="Path to the file")
+    parser.add_argument("--prompt", help="Prompt for Summarization", default=None)
     parser.add_argument("--model", default="large-v3",
                         help="Whisper model to use (default: large-v3)")
     parser.add_argument("--output", help="Output file path (optional)")
     parser.add_argument("-s", "--summarize", action="store_true", default=True,
                         help="Summarize the transcription")
-    parser.add_argument("--backend", choices=['faster-whisper', 'whisper'],
-                        default='whisper', help="Which backend to use")
+    parser.add_argument("--backend", choices=['faster-whisper', 'whisper', 'mlx-whisper'],
+                        default='mlx-whisper', help="Which backend to use")
 
     args = parser.parse_args()
 
@@ -117,20 +132,24 @@ def main():
         if args.backend == 'faster-whisper':
             from faster_whisper import WhisperModel
             model = WhisperModel(model_size_or_path=args.model)
-            transcribe_fn = transcribe_file_faster_whisper
+            transcribe_fn = lambda fp: transcribe_file_faster_whisper(model, fp)
+        elif args.backend == 'mlx-whisper':
+            # mlx-whisper uses HuggingFace repo format
+            model_name = f"mlx-community/whisper-{args.model}-mlx"
+            transcribe_fn = lambda fp: transcribe_file_mlx_whisper(fp, model_name)
         else:
             import whisper
             model = whisper.load_model(args.model)
-            transcribe_fn = transcribe_file_whisper
+            transcribe_fn = lambda fp: transcribe_file_whisper(model, fp)
 
         # Transcribe once and store results
-        full_text, segments, info = transcribe_fn(model, args.file_path)
+        full_text, segments, info = transcribe_fn(args.file_path)
 
         # Generate summary if requested
         summary = ""
         if args.summarize:
             print("\nGenerating summary...")
-            summary = summarize(full_text)
+            summary = summarize(full_text, args.prompt)
             print(f"\nSummary:\n{summary}")
 
         # Determine output file name if not provided
