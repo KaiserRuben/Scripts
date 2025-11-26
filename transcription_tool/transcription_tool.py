@@ -2,9 +2,55 @@ import argparse
 import requests
 import os
 import csv
+from functools import partial
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "qwen3:14b"
+
+
+# === Backend Registry ===
+def create_backend_loader(backend_type, model_name):
+    """Pure function: Returns (model/config, transcribe_function) for given backend."""
+    loaders = {
+        'faster-whisper': lambda: _load_faster_whisper(model_name),
+        'mlx-whisper': lambda: _load_mlx_whisper(model_name),
+        'whisper': lambda: _load_whisper(model_name)
+    }
+    return loaders[backend_type]()
+
+
+def _load_faster_whisper(model_name):
+    from faster_whisper import WhisperModel
+    model = WhisperModel(model_size_or_path=model_name)
+    return partial(transcribe_file_faster_whisper, model)
+
+
+def _load_mlx_whisper(model_name):
+    model_path = f"mlx-community/whisper-{model_name}-mlx"
+    return partial(transcribe_file_mlx_whisper, model_name=model_path)
+
+
+def _load_whisper(model_name):
+    import whisper
+    model = whisper.load_model(model_name)
+    return partial(transcribe_file_whisper, model)
+
+
+# === Segment Normalization ===
+def normalize_segment(segment, backend):
+    """Pure function: Normalize different backend segment formats to dict."""
+    if backend == 'faster-whisper':
+        return {
+            'start': segment.start,
+            'end': segment.end,
+            'text': segment.text
+        }
+    return segment  # Already dict format for whisper/mlx-whisper
+
+
+def normalize_segments(segments, backend):
+    """Pure function: Normalize all segments."""
+    return [normalize_segment(seg, backend) for seg in segments]
 
 
 def transcribe_file_faster_whisper(model, file_path):
@@ -64,39 +110,40 @@ def summarize(text, prompt=None):
         return "Error generating summary"
 
 
-def save_to_csv(segments, output_file, backend='whisper'):
-    """Save transcription segments to a CSV file."""
+# === Pure Formatters ===
+def format_segment_csv(segment):
+    """Pure function: Format a normalized segment for CSV."""
+    return [f"{segment['start']:.2f}", f"{segment['end']:.2f}", segment['text']]
+
+
+def format_segment_markdown(segment):
+    """Pure function: Format a normalized segment for markdown."""
+    return f"[{segment['start']:.2f}s -> {segment['end']:.2f}s] {segment['text']}"
+
+
+def save_to_csv(segments, output_file):
+    """Save transcription segments to a CSV file (expects normalized segments)."""
     csv_file = os.path.splitext(output_file)[0] + '.csv'
 
     try:
         with open(csv_file, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(['Start Time (s)', 'End Time (s)', 'Text'])
-
-            if backend == 'faster-whisper':
-                for segment in segments:
-                    writer.writerow([f"{segment.start:.2f}", f"{segment.end:.2f}", segment.text])
-            else:
-                for segment in segments:
-                    writer.writerow([f"{segment['start']:.2f}", f"{segment['end']:.2f}", segment['text']])
+            writer.writerows(format_segment_csv(seg) for seg in segments)
 
         print(f"CSV file saved to: {csv_file}")
     except IOError as e:
         print(f"Error saving CSV file: {e}")
 
 
-def save_to_markdown(segments, full_text, summary, output_file, backend='whisper'):
-    """Save transcription to a markdown file."""
+def save_to_markdown(segments, full_text, summary, output_file):
+    """Save transcription to a markdown file (expects normalized segments)."""
     try:
         with open(output_file, "w", encoding="utf-8") as f:
-            f.write(f"# Transcription:\n\n")
+            f.write("# Transcription:\n\n")
 
-            if backend == 'faster-whisper':
-                for segment in segments:
-                    f.write(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}\n")
-            else:
-                for segment in segments:
-                    f.write(f"[{segment['start']:.2f}s -> {segment['end']:.2f}s] {segment['text']}\n")
+            for segment in segments:
+                f.write(f"{format_segment_markdown(segment)}\n")
 
             f.write("\n# Full Text:\n\n")
             f.write(f"{full_text}\n\n")
@@ -129,21 +176,14 @@ def main():
 
     print(f"Loading model: {args.model}")
     try:
-        if args.backend == 'faster-whisper':
-            from faster_whisper import WhisperModel
-            model = WhisperModel(model_size_or_path=args.model)
-            transcribe_fn = lambda fp: transcribe_file_faster_whisper(model, fp)
-        elif args.backend == 'mlx-whisper':
-            # mlx-whisper uses HuggingFace repo format
-            model_name = f"mlx-community/whisper-{args.model}-mlx"
-            transcribe_fn = lambda fp: transcribe_file_mlx_whisper(fp, model_name)
-        else:
-            import whisper
-            model = whisper.load_model(args.model)
-            transcribe_fn = lambda fp: transcribe_file_whisper(model, fp)
+        # Load backend using registry pattern
+        transcribe_fn = create_backend_loader(args.backend, args.model)
 
         # Transcribe once and store results
         full_text, segments, info = transcribe_fn(args.file_path)
+
+        # Normalize segments to common format
+        normalized_segments = normalize_segments(segments, args.backend)
 
         # Generate summary if requested
         summary = ""
@@ -162,9 +202,9 @@ def main():
         # Create output directory if it doesn't exist
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-        # Save both markdown and CSV versions
-        save_to_markdown(segments, full_text, summary, output_file, args.backend)
-        save_to_csv(segments, output_file, args.backend)
+        # Save both markdown and CSV versions (using normalized segments)
+        save_to_markdown(normalized_segments, full_text, summary, output_file)
+        save_to_csv(normalized_segments, output_file)
 
     except ImportError as e:
         print(f"Error: Required module not found. {e}")
