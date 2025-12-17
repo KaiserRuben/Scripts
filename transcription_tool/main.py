@@ -1,4 +1,7 @@
 """Transcription pipeline - functional composition with graceful degradation."""
+import os
+os.environ["TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"] = "1"
+
 import argparse
 import sys
 from datetime import datetime
