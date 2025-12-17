@@ -12,6 +12,7 @@ def get_backend(name: str) -> Result["TranscriptionBackend", str]:
         "faster-whisper": lambda: __import__("backends.faster_whisper", fromlist=["backend"]).backend,
         "mlx-whisper": lambda: __import__("backends.mlx_whisper", fromlist=["backend"]).backend,
         "whisper": lambda: __import__("backends.whisper", fromlist=["backend"]).backend,
+        "whisper-cpp": lambda: __import__("backends.whisper_cpp", fromlist=["backend"]).backend,
         "glm-asr": lambda: __import__("backends.glm_asr", fromlist=["backend"]).backend,
     }
     if name not in loaders:

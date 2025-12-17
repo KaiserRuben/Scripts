@@ -6,7 +6,7 @@ import os
 @dataclass(frozen=True)
 class Config:
     file_path: str
-    backend: str = "whisper"
+    backend: str = "whisper-cpp"
     model: str | None = None  # None = use backend default
     output: str | None = None
     prompt: str | None = None
@@ -35,6 +35,7 @@ class Config:
             "faster-whisper": "Systran/faster-distil-whisper-large-v3",
             "mlx-whisper": "large-v3",
             "whisper": "large-v3",
+            "whisper-cpp": "large-v3",
             "glm-asr": "zai-org/GLM-ASR-Nano-2512",
         }
         return defaults.get(self.backend, "large-v3")

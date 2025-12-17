@@ -22,8 +22,8 @@ def parse_args() -> Config:
     """Parse CLI arguments into Config."""
     parser = argparse.ArgumentParser(description="Transcribe audio with speaker diarization")
     parser.add_argument("file_path", help="Path to audio file")
-    parser.add_argument("--backend", choices=["faster-whisper", "mlx-whisper", "whisper", "glm-asr"],
-                        default="whisper")
+    parser.add_argument("--backend", choices=["faster-whisper", "mlx-whisper", "whisper", "whisper-cpp", "glm-asr"],
+                        default="whisper-cpp")
     parser.add_argument("--model", help="Model name (uses backend default if not specified)")
     parser.add_argument("--output", default="transcriptions", help="Output folder base path")
     parser.add_argument("--prompt", help="Custom prompt for analysis")
