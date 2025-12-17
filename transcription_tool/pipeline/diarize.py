@@ -26,7 +26,7 @@ def perform_diarization(
         logger.info("Loading pyannote speaker-diarization-3.1...")
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            token=hf_token,
+            token=hf_token
         )
 
         device = "mps" if torch.backends.mps.is_available() else "cpu"
